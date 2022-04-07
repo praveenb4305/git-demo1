@@ -1,0 +1,496 @@
+var MongoClient = require("mongodb").MongoClient;
+var url =
+    "mongodb+srv://karmayoga_root:iTjlvnnj94DyqDL8@karmayoga.uyc9f.mongodb.net/ky_database?retryWrites=true&w=majority";
+const { ObjectId } = require('mongodb');
+const t12 = require("./test12");
+
+const fetch = require('node-fetch');
+
+const config = require('./kaleyra.json');
+const apikey = config.kaleyra.apikey;
+const sid = config.kaleyra.sid;// sender Identity
+const senderId = config.kaleyra.senderId;
+const notification = require('./notification_messages.json');
+
+
+var complete = async function (elem, seller_data, dbo, client) {
+    console.log("In complete fn----->")
+    // console.log("elem---------------------->",elem)
+    d = seller_data;
+    let isBuyerGrt = elem.no_of_candidates - d.no_of_candidates;
+    // console.log("sellerName in complete called-----------=======>");
+    let sellername = await getUserName(d.user_id, dbo);
+    // console.log("buyerName in complete called-----------=======>");
+    let buyername = await getUserName(elem.user_id, dbo);
+
+    // console.log("Before:");
+
+    // console.log(" buyer candidates ", "  ", " seller candidates ");
+    // console.log(
+    //     `       ${elem.no_of_candidates} `,
+    //     "                   ",
+    //     ` ${d.no_of_candidates} `
+    // );
+
+    if (isBuyerGrt > 0) {
+        b_updt_value = elem.no_of_candidates - d.no_of_candidates;
+
+        // console.log("After:");
+        // console.log(" buyer candidates ", "  ", " seller candidates ");
+        // console.log(`       ${b_updt_value} `, "                   ", " 0 ");
+        // console.log("seller user is = ", d.user_id);
+        // console.log("sell number of candidates is = ", d.no_of_candidates);
+
+        let buyer_status = await updateBuyerData(
+            b_updt_value,
+            elem.request_id,
+            false,
+            dbo,
+            client
+        );
+        // console.log("buyer_status:", b_updt_value);
+        // console.log('labour data:::', d);
+        if (buyer_status === "success") {
+            let seller_status = await updateSellerData(
+                0,
+                d.request_id,
+                true,
+                dbo,
+                client,
+                d
+            );
+            // console.log("seller_status:", seller_status);
+            if (seller_status === "success") {
+                console.log("elem.isOrderCancel",elem.isOrderCancel)
+                if(d.no_of_candidates>0){
+                let contract_status = await insertEContract(
+                    elem.order_id,
+                    elem.user_id,
+                    d.user_id,
+                    buyername?.full_name,
+                    sellername?.full_name,
+                    elem.rate,
+                    d.no_of_candidates,
+                    elem.request_id,
+                    d.request_id,
+                    elem.cat_id,
+                    d.cat_id,
+                    d.location,
+                    elem.no_of_candidates,
+                    dbo,
+                    client
+                );
+                // console.log("contract_status------>",contract_status)
+
+                return contract_status;
+                }
+            }
+        }
+    } else {
+        s_updt_value = d.no_of_candidates - elem.no_of_candidates;
+        // console.log("else");
+        // console.log("After:");
+        // console.log("buyer user is = ", elem.user_id);
+        // console.log(" buyer candidates ", "  ", " seller candidates ");
+        // console.log("       0 ", "                   ", ` ${s_updt_value} `);
+        // console.log("sell number of candidates is = ", d.no_of_candidates);
+        // console.log("sell price is = ", d.rate);
+        // console.log("sell location is = ", d.location);
+
+        let buyer_status = await updateBuyerData(
+            0,
+            elem.request_id,
+            true,
+            dbo,
+            client
+        );
+        // console.log("buyer_status:", buyer_status);
+        // console.log('labour data:::', d);
+        if (buyer_status === "success") {
+            let seller_status = await updateSellerData(
+                s_updt_value,
+                d.request_id,
+                false,
+                dbo,
+                client,
+                d
+            );
+            // console.log("seller_status:", seller_status);
+            if (seller_status === "success") {
+                console.log("elem.order_id",elem.isOrderCancel)
+                if(elem.no_of_candidates>0){
+                let contract_status = await insertEContract(
+                    elem.order_id,
+                    elem.user_id,
+                    d.user_id,
+                    buyername?.full_name,
+                    sellername.full_name,
+                    elem.rate,
+                    elem.no_of_candidates,
+                    elem.request_id,
+                    d.request_id,
+                    elem.cat_id,
+                    d.cat_id,
+                    d.location,
+                    elem.no_of_candidates,
+                    dbo,
+                    client
+                );
+
+                return contract_status;
+            }
+        }
+        }
+    }
+};
+
+var completeBuyer = async function (buyers_data, dbo, client) {
+    console.log("completeBuyer==========>")
+    var res = "";
+    var b = null;
+    var s = null;
+    let b_no = null;
+    let s_no = null;
+    for await(const [i, elem] of buyers_data.entries()) {
+        // console.log("buyers_data.length==============--------->",i)
+        // console.log('buyer length::', elem, i)
+        if (res === "success") return;
+        var seller_data = await getSellers(dbo, elem);
+        // console.log("after getSellers",seller_data)
+        // console.log("1 seller_data called", elem);
+        if (seller_data&&seller_data.length>0)
+        {
+        console.log("Seller data after if----------->",seller_data)
+        // console.log("2 seller_data called", seller_data);
+        seller_data.forEach((d) => {
+            // console.log("In for loop")
+            // console.log("Seller data----------->",d)
+            let isBuyerGrt = elem.no_of_candidates - d.no_of_candidates;
+            if (isBuyerGrt > 0) {
+                b_updt_value = elem.no_of_candidates - d.no_of_candidates;
+            } else {
+                s_updt_value = d.no_of_candidates - elem.no_of_candidates;
+            }
+            // elem = buyer
+            // d = seller here
+            b = elem;
+            s = d;
+        });
+        // console.log("for each over")
+        if (b && s) {
+            console.log("b", b, "s", s);
+            // console.log("complete seller name called-============--->");
+            let sellername = await getUserName(s.user_id, dbo);
+            // console.log("complete buyer name called-============--->");
+            let buyername = await getUserName(b.user_id, dbo);
+            res = await complete(b, s, dbo, client);
+            // console.log("Result :", res);
+            await sleep(3000);
+            t12.smsNotification(buyername.mobile_number, sellername.mobile_number)
+                .then((response) => response.json())
+                // .then(result => console.log('resp ::::::', result))
+            // await sleep(5000);
+            client.close()
+            return;
+        }
+        // console.log("buyers_data.length-1==i",buyers_data.length-1,    i)
+        if (buyers_data.length - 1 == i) {
+            console.log("in last if condition")
+            // console.log("index", i);
+            // console.log('call fetch', b_no, s_no)
+            // await sleep(5000);
+            // process.exit();
+            client.close()
+            // console.log("close")
+        }
+    }
+    }
+    // console.log("completebuyer completed-------------->")
+};
+
+function sleep(ms) {
+    return setTimeout(()=>{console.log("sleep...")}, ms);
+}
+
+async function eContract() {
+    console.log("eContract=============>")
+    try {
+        let client = await MongoClient.connect(url, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+        });
+        var dbo = client.db("ky_database");
+
+        var buyers_data = await getBuyers(dbo);
+        // console.log("buyers_data loded===============----------->", buyers_data);
+        completeBuyer(buyers_data, dbo, client);
+    } catch (err) {
+        // console.log(err);
+    }
+}
+
+async function getBuyers(dbo) {
+    console.log("GetBuyers.........>>")
+    var collection = dbo.collection("requirements");
+
+    return await collection
+        .find({ isComplete: false, job_type: "Buyer", isPayment: true, isOrderCancel:false
+    })
+        .sort({ createdAt: 1 })
+        .toArray();
+        // console.log("buyerResult------->",buyerResult)
+        // return buyerResult
+}
+
+async function getSellers(dbo, elem) {
+    // console.log("GetSellers---------->")
+    var collection = dbo.collection("requirements");
+    // let tstring = { "$toString": "$_id" }
+
+    // let obj = [
+    //     { "$addFields": { "requirement_id": { "$toString": "$_id" } } },
+    //     {
+    //         $lookup:
+    //         {
+    //             from: "labour_details",
+    //             localField: "requirement_id",
+    //             foreignField: "requirement_id",
+    //             as: "labour_details"
+    //         }
+    //     },
+    //     {
+    //         cat_id: elem.cat_id,
+    //         rate: { $lte: elem.rate },
+    //         job_type: "Seller",
+    //         location: elem.location,
+    //         isComplete: false,
+    //         user_id: { $ne: elem.user_id },
+    //         isOrderCancel:false
+    //     }
+    // ];
+
+    // console.log('seller obj:::', obj)
+
+    return await collection
+        .find({$and:[
+            {isActive:true},
+            {cat_id: elem.cat_id},
+            {rate: { $lte: elem.rate }},
+            {job_type: "Seller"},
+            {location: elem.location},
+            {isComplete: false},
+            {user_id: { $ne: elem.user_id }}
+        ]
+        })
+        .sort({ rate: 1, createdAt: 1 })
+        .toArray();
+        // function(err, result) {
+        //     if (err) throw err;
+        //     console.log("result===>",result);
+        //   });
+        // console.log("seller result-------->",result)
+        // console.log("seller.isIoderCancel------->",result.isOrderCancel);
+        
+        // return result
+}
+
+async function getUserName(user_id, dbo) {
+    console.log("GetUsername===================>")
+    return await new Promise(async function (resolve, reject) {
+        dbo
+            .collection("users")
+            .findOne({ _id: ObjectId(user_id) }, function (err, res) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(res);
+                }
+            });
+    });
+}
+
+async function updateBuyerData(candidates, id, iscomplete, dbo, client) {
+    console.log("updateBuyerData-=-=-=-=-=-=-=>",candidates)
+    const session = client.startSession();
+    session.startTransaction();
+
+    return await new Promise(async function (resolve, reject) {
+        var myquery = { request_id: id };
+        var newvalues = {
+            $set: { no_of_candidates: candidates, isComplete: iscomplete },
+        };
+        dbo
+            .collection("requirements")
+            .findOneAndUpdate(myquery, newvalues, async function (err, res) {
+                if (err) {
+                    reject(err);
+                } else {
+                    if (res.lastErrorObject.updatedExisting == true) {
+                        await session.commitTransaction();
+                        await session.endSession();
+                        resolve("success");
+                        // console.log("buyer data success");
+                    } else {
+                        resolve("not inserted");
+                    }
+                }
+            });
+    });
+}
+
+async function updateSellerData(candidates, id, iscomplete, dbo, client, labour_data) {
+    console.log("updateSellerData---------------------^>",labour_data)
+    const session = client.startSession();
+    session.startTransaction();
+    return await new Promise(async function (resolve, reject) {
+        var myquery = { request_id: id };
+       console.log("candidates------->",candidates); 
+        console.log("complete------->",iscomplete);
+        var newvalues = {
+            $set: { no_of_candidates: candidates, isComplete: iscomplete },
+        };
+        dbo
+            .collection("requirements")
+            .findOneAndUpdate(myquery, newvalues, async function (err, res) {
+                if (err) {
+                    reject(err);
+                } else {
+                    if (res.lastErrorObject.updatedExisting == true) {
+                        await session.commitTransaction();
+                        await session.endSession();
+                        // console.log('insert labour_data::', labour_data);
+                        // console.log('insert labour_data length::', labour_data.length);
+                        // console.log('insert labour_data id::', labour_data._id.toString());
+                        // console.log('insert labour_data::', labour_data.no_of_candidates);
+                        let d = new Date();
+                        d.setDate(d.getDate() + 45)
+                        let expiration_date = d.setUTCHours(0, 0, 0, 0)
+
+                        // console.log('expiration date:::', new Date(expiration_date))
+                        dbo
+                            .collection("labour_details")
+                            .findOneAndUpdate({ "requirement_id": labour_data._id.toString() }, { $set: { "expiration_date": new Date(expiration_date) } }, async function (err, res) {
+                                if (err) {
+                                    reject(err);
+                                } else {
+                                    if (res.lastErrorObject.updatedExisting == true) {
+                                        resolve("success");
+                                    } else {
+                                        resolve("not inserted");
+                                    }
+                                }
+                            });
+                    } else {
+                        resolve("not inserted");
+                    }
+                }
+            });
+    });
+}
+
+async function insertEContract(
+    order_id,
+    buyer_id,
+    seller_id,
+    b_name,
+    s_name,
+    price,
+    candidates,
+    b_request_id,
+    s_request_id,
+    b_cat_id,
+    s_cat_id,
+    location,
+    oq_no_of_candidates,
+    dbo,
+    client
+) {
+    console.log("Inserting econtract----------------->")
+    const session = client.startSession();
+    session.startTransaction();
+    return await new Promise(async function (resolve, reject) {
+        var obj = {
+            order_id: order_id,
+            buyer_id: buyer_id,
+            seller_id: seller_id,
+            buyer_name: b_name,
+            seller_name: s_name,
+            price_match: price,
+            no_of_candidates: candidates,
+            buyer_request_id: b_request_id,
+            seller_request_id: s_request_id,
+            buyer_cat_id: b_cat_id,
+            seller_cat_id: s_cat_id,
+            location: location,
+            ordered_qty: oq_no_of_candidates,
+            createdAt: new Date(),
+        };
+        dbo.collection("e_contracts").insertOne(obj, async function (err, res) {
+            if (err) {
+                reject(err);
+            } else {
+                await session.commitTransaction();
+                await session.endSession();
+                resolve("success");
+                // needs to uncomment based on AWS issue  
+                // await eContract();
+
+
+                // console.log("contract data insert success", b_name, s_name);
+
+            }
+        });
+    });
+}
+
+/**
+ * Sending SMS Notification to particular mobile number
+ * via kaleyra service provider API
+ *
+ * @param {*} mobile_number
+ * @returns {Object}
+ */
+
+async function smsNotification(buyername, sellername) {
+    console.log("smsNotificaton triggered-------->",smsNotification)
+    return await new Promise(async function (resolve, reject) {
+
+        var smsobj = notification.filter(element => {
+            return element.purpose == 'Matching Bids';
+        });
+
+        var headers = {
+            'Content-Type': 'application/json',
+            'api-key': apikey,
+        };
+
+        //numbers
+        var dataString = {
+            "to": `+91${buyername.mobile_number}`,
+            "sender": senderId,
+            "source": "API",
+            "type": "TXN",
+            "body": smsobj[0].message,
+            "template_id": '1707163004290981171'
+        };
+
+        // console.log(dataString)
+
+        var requestOptions = {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(dataString)
+        };
+
+        await fetch(
+            `https://api.kaleyra.io/v1/${sid}/messages`,
+            requestOptions
+        ).then((response) => response.json())
+            .then(result => resolve(result))
+            .catch(err => reject(err));
+    });
+};
+
+// eContract();
+
+module.exports = eContract
